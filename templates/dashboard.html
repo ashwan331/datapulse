@@ -94,11 +94,18 @@
     <a href="/download_excel">
         📥 Download Excel
     </a>
-
+    <a href="/send_report">
+        Send Report
+    </a>
     <a href="/download_pdf">
         📄 Download PDF
     </a>
-
+    <a href="/profile">
+        👤 Profile
+    </a>
+    <a href="/admin">
+        👑 Admin Panel
+    </a>
     <a href="/logout">
         🚪 Logout
     </a>
@@ -107,7 +114,26 @@
 
 <div class="main">
 
-    <h2>Analytics Dashboard</h2>
+    <div class="d-flex justify-content-between">
+
+        <div class="d-flex justify-content-between">
+            <h2>Analytics Dashboard</h2>
+            <button
+            class="btn btn-dark"
+            onclick="toggleTheme()">
+
+            🌙 Dark Mode
+        </button>
+    </div>
+
+        <button
+        class="btn btn-dark"
+        onclick="toggleTheme()">
+
+        🌙 Dark Mode
+
+    </button>
+</div>
 
     <hr>
 
@@ -410,7 +436,25 @@
         </div>
 
     </div>
+    <div class="row mt-4">
 
+<div class="col-md-12">
+
+<div class="card shadow">
+
+<div class="card-body">
+
+<h4>💰 Profit by Region</h4>
+
+<canvas id="profitChart"></canvas>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
     <!-- BEST REGION -->
 
     <div class="row mt-4">
@@ -450,17 +494,104 @@
     </div>
 
     <!-- TABLE -->
+     <div class="card shadow mt-4">
 
+<div class="card-body">
+
+<h4>🏆 Top 5 Products</h4>
+
+<ol>
+
+{% for item in top_products %}
+
+<li>
+{{ item.product }}
+-
+₹ {{ item.sales }}
+</li>
+
+{% endfor %}
+
+</ol>
+
+</div>
+<div class="card shadow mt-4">
+
+<div class="card-body">
+
+<h4>🤖 AI Insights</h4>
+
+<ul class="list-group">
+
+<li class="list-group-item">
+{{ insight_1 }}
+</li>
+
+<li class="list-group-item">
+{{ insight_2 }}
+</li>
+
+<li class="list-group-item">
+{{ insight_3 }}
+</li>
+
+<li class="list-group-item">
+{{ insight_4 }}
+</li>
+
+</ul>
+
+</div>
+
+</div>
+<div class="card shadow mt-4">
+
+<div class="card-body">
+
+<h4>🤖 AI Summary</h4>
+
+<ul class="list-group">
+
+{% for item in ai_summary %}
+
+<li class="list-group-item">
+
+{{ item }}
+
+</li>
+
+{% endfor %}
+
+</ul>
+
+</div>
+
+</div>
+</div>
     <div class="card shadow mt-4">
-
         <div class="card-body">
-
             <h4>Sales Data</h4>
+            <form method="GET" class="mb-3">
+                <div class="row">
+                    <div class="col-md-10">
+                        <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        placeholder="Search Product..."
+                        value="{{ search }}">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary w-100">
+                            Search
+                        </button>
+                    </div>
 
+                </div>
+
+            </form>
             <div class="table-responsive">
-
-                <table class="table table-striped table-hover">
-
+                <table class="table table-striped">
                     <thead>
 
                     <tr>
@@ -530,6 +661,77 @@ data:{{ product_values|tojson }}
 }
 );
 
+new Chart(
+document.getElementById("regionChart"),
+{
+type:"bar",
+data:{
+labels:{{ region_labels|tojson }},
+datasets:[{
+label:"Sales",
+data:{{ region_values|tojson }}
+}]
+}
+}
+);
+
+new Chart(
+document.getElementById("productChart"),
+{
+type:"pie",
+data:{
+labels:{{ product_labels|tojson }},
+datasets:[{
+data:{{ product_values|tojson }}
+}]
+}
+}
+);
+
+function toggleTheme(){
+
+    document.body.classList.toggle(
+        "dark-mode"
+    );
+
+    localStorage.setItem(
+        "theme",
+        document.body.classList.contains(
+            "dark-mode"
+        )
+    );
+}
+
+window.onload = function(){
+
+    if(
+        localStorage.getItem("theme")
+        === "true"
+    ){
+
+        document.body.classList.add(
+            "dark-mode"
+        );
+
+    }
+
+};
+new Chart(
+document.getElementById("profitChart"),
+{
+type:"doughnut",
+data:{
+labels:{{ profit_region_labels|tojson }},
+datasets:[{
+data:{{ profit_region_values|tojson }}
+}]
+}
+}
+);
+</script>
+
+</body>
+</html>
 </script>
 
 </body>

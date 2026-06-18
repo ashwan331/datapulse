@@ -1,8 +1,8 @@
-product,region,sales,profit
-Laptop,North,50000,10000
-Mobile,South,30000,5000
-Tablet,East,25000,4000
-Laptop,West,60000,12000
-Mobile,North,45000,7000
-Camera,South,35000,6000
-Tablet,West,55000,8000
+date,product,region,sales,profit
+2025-01-01,Laptop,North,50000,10000
+2025-02-01,Mobile,South,30000,5000
+2025-03-01,Tablet,East,25000,4000
+2025-04-01,Laptop,West,60000,12000
+2025-05-01,Mobile,North,45000,7000
+2025-06-01,Camera,South,35000,6000
+2025-07-01,Tablet,West,55000,8000
