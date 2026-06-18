@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import os
 from reportlab.pdfgen import canvas
-from werkzeug.security import generate_password_hash, check_password_hash
+
 app = Flask(__name__)
 
 app.secret_key = "datapulse_secret"
@@ -13,21 +13,7 @@ DATABASE = "database/company.db"
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
-conn = sqlite3.connect(DATABASE)
 
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    email TEXT UNIQUE,
-    password TEXT
-)
-""")
-
-conn.commit()
-conn.close()
 if not os.path.exists("database"):
     os.makedirs("database")
 
@@ -37,89 +23,17 @@ def login():
 
     if request.method == "POST":
 
-        email = request.form["email"]
+        username = request.form["username"]
         password = request.form["password"]
 
-        conn = sqlite3.connect(DATABASE)
+        if username == "admin" and password == "admin123":
 
-        cursor = conn.cursor()
+            session["user"] = username
 
-        cursor.execute(
-            "SELECT * FROM users WHERE email=?",
-            (email,)
-        )
+            return redirect("/")
 
-        user = cursor.fetchone()
+    return render_template("login.html")
 
-        conn.close()
-
-        if user:
-
-            if check_password_hash(
-                user[3],
-                password
-            ):
-
-                session["user"] = user[2]
-
-                return redirect("/")
-
-    return render_template(
-        "login.html"
-    )
-@app.route("/signup", methods=["GET", "POST"])
-def signup():
-
-    if request.method == "POST":
-
-        name = request.form["name"]
-        email = request.form["email"]
-
-        password = generate_password_hash(
-            request.form["password"]
-        )
-
-        try:
-
-            conn = sqlite3.connect(DATABASE)
-
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
-                INSERT INTO users
-                (
-                    name,
-                    email,
-                    password
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?
-                )
-                """,
-                (
-                    name,
-                    email,
-                    password
-                )
-            )
-
-            conn.commit()
-
-            conn.close()
-
-            return redirect("/login")
-
-        except:
-
-            return "Email already registered"
-
-    return render_template(
-        "signup.html"
-    )
 
 @app.route("/logout")
 def logout():
