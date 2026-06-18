@@ -1,0 +1,8 @@
+product,region,sales,profit
+Laptop,North,50000,10000
+Mobile,South,30000,5000
+Tablet,East,25000,4000
+Laptop,West,60000,12000
+Mobile,North,45000,7000
+Camera,South,35000,6000
+Tablet,West,55000,8000
