@@ -1,36 +1,130 @@
-from flask import Flask, render_template, request, redirect, session, send_file
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    session,
+    send_file
+)
+
 import sqlite3
 import pandas as pd
 import os
+from io import BytesIO
+
 from reportlab.pdfgen import canvas
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash
+)
+from werkzeug.utils import secure_filename
+
+
+# ==================================================
+# APP CONFIG
+# ==================================================
+
 app = Flask(__name__)
 
-app.secret_key = "datapulse_secret"
+app.secret_key = os.environ.get(
+    "SECRET_KEY",
+    "datapulse_secret"
+)
+
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 UPLOAD_FOLDER = "uploads"
 DATABASE = "database/company.db"
 
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-conn = sqlite3.connect(DATABASE)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs("database", exist_ok=True)
 
-cursor = conn.cursor()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    email TEXT UNIQUE,
-    password TEXT
-)
-""")
+# ==================================================
+# DATABASE SETUP
+# ==================================================
 
-conn.commit()
-conn.close()
-if not os.path.exists("database"):
-    os.makedirs("database")
+def get_db():
+    return sqlite3.connect(DATABASE)
 
+
+with get_db() as conn:
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    )
+    """)
+
+    conn.commit()
+
+
+# ==================================================
+# SIGNUP
+# ==================================================
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+
+    if request.method == "POST":
+
+        name = request.form["name"].strip()
+        email = request.form["email"].strip()
+        password = request.form["password"]
+
+        hashed_password = generate_password_hash(
+            password
+        )
+
+        try:
+
+            with get_db() as conn:
+
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    """
+                    INSERT INTO users
+                    (
+                        name,
+                        email,
+                        password
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        name,
+                        email,
+                        hashed_password
+                    )
+                )
+
+                conn.commit()
+
+            return redirect("/login")
+
+        except sqlite3.IntegrityError:
+
+            return "Email already registered"
+
+    return render_template(
+        "signup.html"
+    )
+
+@app.route("/home")
+def home():
+
+    return render_template(
+        "index.html"
+    )
+# ==================================================
+# LOGIN
+# ==================================================
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -39,6 +133,9 @@ def login():
 
         email = request.form["email"]
         password = request.form["password"]
+
+        print("LOGIN ATTEMPT")
+        print("Email:", email)
 
         conn = sqlite3.connect(DATABASE)
 
@@ -53,73 +150,33 @@ def login():
 
         conn.close()
 
+        print("User:", user)
+
         if user:
 
-            if check_password_hash(
-                user[3],
-                password
-            ):
+            if check_password_hash(user[3], password):
 
-                session["user"] = user[2]
+                print("PASSWORD CORRECT")
+
+                session["user"] = {
+                    "name": user[1],
+                    "email": user[2]
+                }
 
                 return redirect("/")
 
-    return render_template(
-        "login.html"
-    )
-@app.route("/signup", methods=["GET", "POST"])
-def signup():
+            else:
 
-    if request.method == "POST":
+                print("WRONG PASSWORD")
 
-        name = request.form["name"]
-        email = request.form["email"]
+        else:
 
-        password = generate_password_hash(
-            request.form["password"]
-        )
+            print("USER NOT FOUND")
 
-        try:
-
-            conn = sqlite3.connect(DATABASE)
-
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
-                INSERT INTO users
-                (
-                    name,
-                    email,
-                    password
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?
-                )
-                """,
-                (
-                    name,
-                    email,
-                    password
-                )
-            )
-
-            conn.commit()
-
-            conn.close()
-
-            return redirect("/login")
-
-        except:
-
-            return "Email already registered"
-
-    return render_template(
-        "signup.html"
-    )
+    return render_template("login.html")
+# ==================================================
+# LOGOUT
+# ==================================================
 
 @app.route("/logout")
 def logout():
@@ -129,138 +186,108 @@ def logout():
     return redirect("/login")
 
 
-@app.route("/download_excel")
-def download_excel():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = sqlite3.connect(DATABASE)
-
-    df = pd.read_sql(
-        "SELECT * FROM sales",
-        conn
-    )
-
-    conn.close()
-
-    filename = "sales_report.xlsx"
-
-    df.to_excel(
-        filename,
-        index=False
-    )
-
-    return send_file(
-        filename,
-        as_attachment=True
-    )
-
-
-@app.route("/download_pdf")
-def download_pdf():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = sqlite3.connect(DATABASE)
-
-    df = pd.read_sql(
-        "SELECT * FROM sales",
-        conn
-    )
-
-    conn.close()
-
-    filename = "sales_report.pdf"
-
-    c = canvas.Canvas(filename)
-
-    c.drawString(
-        100,
-        800,
-        "DataPulse Analytics Report"
-    )
-
-    y = 760
-
-    for index, row in df.iterrows():
-
-        text = (
-            f"{row['product']} | "
-            f"{row['region']} | "
-            f"{row['sales']} | "
-            f"{row['profit']}"
-        )
-
-        c.drawString(
-            50,
-            y,
-            text
-        )
-
-        y -= 20
-
-        if y < 50:
-            c.showPage()
-            y = 800
-
-    c.save()
-
-    return send_file(
-        filename,
-        as_attachment=True
-    )
-
+# ==================================================
+# DASHBOARD
+# ==================================================
 
 @app.route("/", methods=["GET", "POST"])
 def dashboard():
 
     if "user" not in session:
-        return redirect("/login")
+        return redirect("/home")
+
+    # ----------------------------------------------
+    # FILE UPLOAD
+    # ----------------------------------------------
 
     if request.method == "POST":
 
         file = request.files.get("file")
 
-        if file and file.filename != "":
+        if file and file.filename:
+
+            filename = secure_filename(
+                file.filename
+            )
 
             filepath = os.path.join(
                 UPLOAD_FOLDER,
-                file.filename
+                filename
             )
 
             file.save(filepath)
 
-            df = pd.read_csv(filepath)
+            try:
 
-            df.columns = df.columns.str.lower()
+                df = pd.read_csv(filepath)
 
-            conn = sqlite3.connect(DATABASE)
+                df.columns = (
+                    df.columns
+                    .str.strip()
+                    .str.lower()
+                )
 
-            df.to_sql(
-                "sales",
-                conn,
-                if_exists="replace",
-                index=False
-            )
+                required_columns = {
+                    "product",
+                    "region",
+                    "sales",
+                    "profit"
+                }
 
-            conn.close()
+                if not required_columns.issubset(
+                    df.columns
+                ):
+                    return (
+                        "CSV must contain "
+                        "product, region, sales, profit"
+                    )
 
-            return redirect("/")
+                df["sales"] = pd.to_numeric(
+                    df["sales"],
+                    errors="coerce"
+                )
+
+                df["profit"] = pd.to_numeric(
+                    df["profit"],
+                    errors="coerce"
+                )
+
+                df = df.dropna(
+                    subset=[
+                        "sales",
+                        "profit"
+                    ]
+                )
+
+                with get_db() as conn:
+
+                    df.to_sql(
+                        "sales",
+                        conn,
+                        if_exists="replace",
+                        index=False
+                    )
+
+                return redirect("/")
+
+            except Exception as e:
+
+                return f"Upload Error: {e}"
+
+    # ----------------------------------------------
+    # LOAD SALES DATA
+    # ----------------------------------------------
 
     try:
 
-        conn = sqlite3.connect(DATABASE)
+        with get_db() as conn:
 
-        df = pd.read_sql(
-            "SELECT * FROM sales",
-            conn
-        )
+            df = pd.read_sql(
+                "SELECT * FROM sales",
+                conn
+            )
 
-        conn.close()
-
-    except:
+    except Exception:
 
         df = pd.DataFrame(
             columns=[
@@ -271,133 +298,378 @@ def dashboard():
             ]
         )
 
-    if len(df) > 0:
+    # ----------------------------------------------
+    # FILTERS
+    # ----------------------------------------------
 
-        df.columns = df.columns.str.lower()
+    region_filter = request.args.get(
+        "region",
+        "All"
+    )
 
-        region_filter = request.args.get(
-            "region",
-            "All"
-        )
+    product_filter = request.args.get(
+        "product",
+        "All"
+    )
 
-        product_filter = request.args.get(
-            "product",
-            "All"
-        )
+    search = request.args.get(
+        "search",
+        ""
+    )
 
-        search = request.args.get(
-            "search",
-            ""
+    if not df.empty:
+
+        df.columns = (
+            df.columns
+            .str.strip()
+            .str.lower()
         )
 
         if region_filter != "All":
+
             df = df[
-                df["region"] == region_filter
+                df["region"]
+                .astype(str)
+                .str.lower()
+                ==
+                region_filter.lower()
             ]
 
         if product_filter != "All":
+
             df = df[
-                df["product"] == product_filter
+                df["product"]
+                .astype(str)
+                .str.lower()
+                ==
+                product_filter.lower()
             ]
 
         if search:
+
             df = df[
-                df["product"].astype(str).str.contains(
+                df["product"]
+                .astype(str)
+                .str.contains(
                     search,
                     case=False,
                     na=False
                 )
             ]
 
-        total_sales = (
-            df["sales"].sum()
-            if len(df) > 0 else 0
+    has_data = not df.empty
+
+    # ----------------------------------------------
+    # KPIs
+    # ----------------------------------------------
+
+    total_sales = (
+        float(df["sales"].sum())
+        if has_data else 0
+    )
+
+    total_profit = (
+        float(df["profit"].sum())
+        if has_data else 0
+    )
+
+    total_orders = (
+        len(df)
+        if has_data else 0
+    )
+
+    avg_sales = (
+        round(df["sales"].mean(), 2)
+        if has_data else 0
+    )
+
+    avg_profit = (
+        round(df["profit"].mean(), 2)
+        if has_data else 0
+    )
+
+    max_sales = (
+        float(df["sales"].max())
+        if has_data else 0
+    )
+
+    min_sales = (
+        float(df["sales"].min())
+        if has_data else 0
+    )
+
+    regions = (
+        sorted(
+            df["region"]
+            .astype(str)
+            .unique()
         )
+        if has_data else []
+    )
 
-        total_profit = (
-            df["profit"].sum()
-            if len(df) > 0 else 0
+    products = (
+        sorted(
+            df["product"]
+            .astype(str)
+            .unique()
         )
+        if has_data else []
+    )
 
-        total_orders = len(df)
+    # ----------------------------------------------
+    # CHART DATA
+    # ----------------------------------------------
 
-        regions = sorted(
-            df["region"].unique()
-        ) if len(df) > 0 else []
-
-        products = sorted(
-            df["product"].unique()
-        ) if len(df) > 0 else []
+    if has_data:
 
         region_data = (
             df.groupby("region")["sales"]
             .sum()
             .reset_index()
-        ) if len(df) > 0 else pd.DataFrame()
+        )
 
         product_data = (
             df.groupby("product")["sales"]
             .sum()
             .reset_index()
-        ) if len(df) > 0 else pd.DataFrame()
+        )
 
-        if len(df) > 0:
+        best_product = (
+            df.groupby("product")["sales"]
+            .sum()
+            .idxmax()
+        )
 
-            best_product = (
-                df.groupby("product")["sales"]
-                .sum()
-                .idxmax()
-            )
-
-            best_region = (
-                df.groupby("region")["sales"]
-                .sum()
-                .idxmax()
-            )
-
-        else:
-
-            best_product = "No Data"
-            best_region = "No Data"
+        best_region = (
+            df.groupby("region")["sales"]
+            .sum()
+            .idxmax()
+        )
 
     else:
-
-        total_sales = 0
-        total_profit = 0
-        total_orders = 0
-
-        regions = []
-        products = []
-
-        best_product = "No Data"
-        best_region = "No Data"
 
         region_data = pd.DataFrame()
         product_data = pd.DataFrame()
 
-        search = ""
+        best_product = "No Data"
+        best_region = "No Data"
+
+    # ----------------------------------------------
+    # RENDER
+    # ----------------------------------------------
 
     return render_template(
         "dashboard.html",
+
         sales=total_sales,
         profit=total_profit,
         orders=total_orders,
+
+        avg_sales=avg_sales,
+        avg_profit=avg_profit,
+
+        max_sales=max_sales,
+        min_sales=min_sales,
+
         best_product=best_product,
         best_region=best_region,
+
         regions=regions,
         products=products,
+
+        selected_region=region_filter,
+        selected_product=product_filter,
+
         search=search,
-        region_labels=region_data["region"].tolist()
-        if len(region_data) > 0 else [],
-        region_values=region_data["sales"].tolist()
-        if len(region_data) > 0 else [],
-        product_labels=product_data["product"].tolist()
-        if len(product_data) > 0 else [],
-        product_values=product_data["sales"].tolist()
-        if len(product_data) > 0 else [],
-        table_data=df.to_dict(orient="records")
+
+        region_labels=(
+            region_data["region"].tolist()
+            if not region_data.empty
+            else []
+        ),
+
+        region_values=(
+            region_data["sales"].tolist()
+            if not region_data.empty
+            else []
+        ),
+
+        product_labels=(
+            product_data["product"].tolist()
+            if not product_data.empty
+            else []
+        ),
+
+        product_values=(
+            product_data["sales"].tolist()
+            if not product_data.empty
+            else []
+        ),
+
+        table_data=df.to_dict(
+            orient="records"
+        )
     )
 
+
+# ==================================================
+# EXCEL EXPORT
+# ==================================================
+
+@app.route("/download_excel")
+def download_excel():
+
+    if "user" not in session:
+        return redirect("/login")
+
+    try:
+
+        with get_db() as conn:
+
+            df = pd.read_sql(
+                "SELECT * FROM sales",
+                conn
+            )
+
+        output = BytesIO()
+
+        with pd.ExcelWriter(
+            output,
+            engine="openpyxl"
+        ) as writer:
+
+            df.to_excel(
+                writer,
+                index=False,
+                sheet_name="Sales"
+            )
+
+        output.seek(0)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name="sales_report.xlsx",
+            mimetype=(
+                "application/vnd.openxmlformats-"
+                "officedocument.spreadsheetml.sheet"
+            )
+        )
+
+    except Exception as e:
+
+        return f"Export Error: {e}"
+
+
+# ==================================================
+# PDF EXPORT
+# ==================================================
+
+@app.route("/download_pdf")
+def download_pdf():
+
+    if "user" not in session:
+        return redirect("/login")
+
+    try:
+
+        with get_db() as conn:
+
+            df = pd.read_sql(
+                "SELECT * FROM sales",
+                conn
+            )
+
+        buffer = BytesIO()
+
+        pdf = canvas.Canvas(buffer)
+
+        pdf.drawString(
+            180,
+            800,
+            "DataPulse Analytics Report"
+        )
+
+        y = 760
+
+        pdf.drawString(
+            40,
+            y,
+            "Product"
+        )
+
+        pdf.drawString(
+            200,
+            y,
+            "Region"
+        )
+
+        pdf.drawString(
+            320,
+            y,
+            "Sales"
+        )
+
+        pdf.drawString(
+            430,
+            y,
+            "Profit"
+        )
+
+        y -= 25
+
+        for _, row in df.iterrows():
+
+            pdf.drawString(
+                40,
+                y,
+                str(row["product"])
+            )
+
+            pdf.drawString(
+                200,
+                y,
+                str(row["region"])
+            )
+
+            pdf.drawString(
+                320,
+                y,
+                str(row["sales"])
+            )
+
+            pdf.drawString(
+                430,
+                y,
+                str(row["profit"])
+            )
+
+            y -= 20
+
+            if y < 50:
+
+                pdf.showPage()
+                y = 800
+
+        pdf.save()
+
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name="sales_report.pdf",
+            mimetype="application/pdf"
+        )
+
+    except Exception as e:
+
+        return f"PDF Export Error: {e}"
+
+
+# ==================================================
+# RUN APP
+# ==================================================
 
 if __name__ == "__main__":
     app.run(debug=True)
