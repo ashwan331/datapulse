@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DataPulse Dashboard</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<h1>📊 DataPulse Dashboard</h1>
+
+<div class="card">
+    <h2>Total Sales</h2>
+    <p>₹ {{ sales }}</p>
+</div>
+
+<div class="card">
+    <h2>Total Profit</h2>
+    <p>₹ {{ profit }}</p>
+</div>
+
+</body>
+</html>
